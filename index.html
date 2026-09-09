@@ -145,6 +145,32 @@
     border-radius:4px; padding:5px 11px; font-size:12px; cursor:pointer; font-family:inherit;
   }
 
+  #talent-view{ padding: 10px 0 40px; }
+  .talent-header{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding: 0 0 10px;
+  }
+  .talent-btn{
+    background: var(--ember); color:#1A130B; border:none; border-radius:4px;
+    padding: 8px 14px; font-size: 13px; font-weight:600; cursor:pointer; font-family:inherit; flex-shrink:0;
+  }
+  .talent-btn:disabled{ opacity:0.5; cursor:default; }
+  .talent-meta{ font-size:12px; color: var(--muted); line-height:1.5; }
+  #talent-svg{ width:100%; height: 380px; display:block; }
+  #talent-svg .bubble{ cursor:pointer; }
+  .talent-info{
+    margin-top: 6px; padding: 14px; background: var(--surface);
+    border: 1px solid var(--line); border-radius: 4px; display:none;
+  }
+  .talent-info.open{ display:block; }
+  .talent-info .talent-name{ font-size: 18px; margin: 0 0 8px; }
+  .talent-info .talent-desc{ font-size: 14px; line-height:1.6; margin:0; color: var(--ink); }
+  .talent-info .talent-direction{
+    font-size: 14px; line-height:1.6; margin:4px 0 0; color: var(--ink);
+    background: var(--ember-dim); border-left: 2px solid rgba(227,147,79,0.5);
+    border-radius:4px; padding: 9px 11px;
+  }
+
   .empty{
     margin-top: 40px; text-align:center; color: var(--muted); font-size: 14px; line-height:1.7; padding: 0 10px;
   }
@@ -263,6 +289,7 @@
   <div class="view-toggle">
     <button class="view-btn active" data-view="list" type="button">기록</button>
     <button class="view-btn" data-view="map" type="button">마인드맵</button>
+    <button class="view-btn" data-view="talent" type="button">재능</button>
   </div>
 
   <main id="fragment-list" class="view-panel active">
@@ -272,6 +299,15 @@
   <div id="mindmap-view" class="view-panel">
     <svg id="mindmap-svg"></svg>
     <div class="mindmap-info" id="mindmap-info"></div>
+  </div>
+
+  <div id="talent-view" class="view-panel">
+    <div class="talent-header">
+      <button class="talent-btn" id="analyze-talent-btn" type="button">재능 분석하기</button>
+      <span class="talent-meta" id="talent-meta"></span>
+    </div>
+    <svg id="talent-svg"></svg>
+    <div class="talent-info" id="talent-info"></div>
   </div>
 </div>
 
@@ -292,6 +328,11 @@
   const mindmapView = document.getElementById('mindmap-view');
   const mindmapSvg = document.getElementById('mindmap-svg');
   const mindmapInfo = document.getElementById('mindmap-info');
+  const talentView = document.getElementById('talent-view');
+  const talentSvg = document.getElementById('talent-svg');
+  const talentInfo = document.getElementById('talent-info');
+  const analyzeTalentBtn = document.getElementById('analyze-talent-btn');
+  const talentMeta = document.getElementById('talent-meta');
   const settingsToggle = document.getElementById('settings-toggle');
   const settingsPanel = document.getElementById('settings-panel');
   const apiKeyInput = document.getElementById('api-key-input');
@@ -368,8 +409,11 @@
     document.querySelectorAll('.view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
     list.classList.toggle('active', view === 'list');
     mindmapView.classList.toggle('active', view === 'map');
+    talentView.classList.toggle('active', view === 'talent');
     if (view === 'map') renderMindmap();
     else mindmapInfo.classList.remove('open');
+    if (view === 'talent') renderTalentView();
+    else talentInfo.classList.remove('open');
   }
 
   function computeGraph(){
@@ -504,6 +548,205 @@
           el.classList.add('highlight');
           setTimeout(() => el.classList.remove('highlight'), 1400);
         }
+      });
+    });
+  }
+
+  const TALENT_KEY = 'pyeollin_talents';
+  let talentData = null;
+  try {
+    const rawTalents = localStorage.getItem(TALENT_KEY);
+    talentData = rawTalents ? JSON.parse(rawTalents) : null;
+  } catch (e) { talentData = null; }
+
+  function saveTalents(data){
+    try { localStorage.setItem(TALENT_KEY, JSON.stringify(data)); }
+    catch (e) { console.error('재능 저장 실패', e); }
+  }
+
+  function layoutBubbles(nodes, width, height){
+    const cx = width / 2, cy = height / 2;
+    nodes.forEach((n, i) => {
+      const angle = (i / nodes.length) * Math.PI * 2;
+      n.x = cx + Math.cos(angle) * 40 + (Math.random() - 0.5) * 10;
+      n.y = cy + Math.sin(angle) * 40 + (Math.random() - 0.5) * 10;
+    });
+    const pad = 8;
+    for (let it = 0; it < 300; it++) {
+      nodes.forEach(n => {
+        n.x += (cx - n.x) * 0.01;
+        n.y += (cy - n.y) * 0.01;
+      });
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const a = nodes[i], b = nodes[j];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+          const minDist = a.r + b.r + pad;
+          if (dist < minDist) {
+            const overlap = (minDist - dist) / 2;
+            const ux = dx / dist, uy = dy / dist;
+            a.x -= ux * overlap; a.y -= uy * overlap;
+            b.x += ux * overlap; b.y += uy * overlap;
+          }
+        }
+      }
+      nodes.forEach(n => {
+        n.x = Math.max(n.r + 4, Math.min(width - n.r - 4, n.x));
+        n.y = Math.max(n.r + 4, Math.min(height - n.r - 4, n.y));
+      });
+    }
+  }
+
+  analyzeTalentBtn.addEventListener('click', runTalentAnalysis);
+
+  async function runTalentAnalysis(){
+    const apiKey = getApiKey();
+    if (!apiKey) { alert('설정(⚙)에서 API 키를 먼저 넣어주세요.'); return; }
+    if (fragments.length < 3) { alert('조각이 3개는 모여야 분석할 수 있어요.'); return; }
+
+    analyzeTalentBtn.disabled = true;
+    analyzeTalentBtn.textContent = '분석하는 중…';
+
+    try {
+      const sample = fragments.slice(0, 60);
+      const lines = sample
+        .map((f, i) => `${i}. ${f.text ? f.text : '(사진 기록)'}${f.interpretation ? ' → 그때 해석: ' + f.interpretation : ''}`)
+        .join('\n');
+
+      const prompt = `다음은 한 사람이 시간이 지나며 남긴 직관·감각의 조각들이야.
+
+${lines}
+
+이 조각들을 전체적으로 보고, 이 사람에게서 반복적으로 드러나는 잠재적 재능이나 강점을 3~5개 찾아줘. 단정하지 말고 근거 있는 관찰로 담백하게.
+각 재능마다 다음을 담아줘:
+- name: 짧은 이름(명사형, 5글자 내외)
+- description: 왜 그렇게 보이는지, 2문장 이내
+- direction: 이 재능을 살리려면 구체적으로 뭘 해볼 수 있을지 방향 제안, 2문장 이내
+- fragmentIndices: 위 목록에서 이 재능과 관련 있다고 느껴지는 조각 번호 배열
+
+아래 JSON 형식으로만 응답해. 다른 설명이나 코드블록 없이:
+{"talents":[{"name":"...", "description":"...", "direction":"...", "fragmentIndices":[0,3,7]}]}`;
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-5',
+          max_tokens: 900,
+          messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }]
+        })
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`API 오류 ${response.status}: ${errText.slice(0, 200)}`);
+      }
+      const data = await response.json();
+      const textOut = (data.content || [])
+        .filter(b => b.type === 'text')
+        .map(b => b.text)
+        .join('\n');
+      const clean = textOut.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(clean);
+
+      const talents = (parsed.talents || []).map((t, i) => ({
+        id: 't' + i + '-' + Date.now().toString(36),
+        name: t.name || '이름 없음',
+        description: t.description || '',
+        direction: t.direction || '',
+        fragmentIds: (t.fragmentIndices || []).map(idx => sample[idx] && sample[idx].id).filter(Boolean)
+      }));
+
+      talentData = { generatedAt: Date.now(), fragmentCount: fragments.length, talents };
+      saveTalents(talentData);
+      renderTalentView();
+    } catch (e) {
+      console.error(e);
+      alert('재능 분석 중 문제가 생겼어요. 잠시 후 다시 시도해주세요.');
+    }
+    analyzeTalentBtn.disabled = false;
+    analyzeTalentBtn.textContent = (talentData && talentData.talents && talentData.talents.length) ? '다시 분석하기' : '재능 분석하기';
+  }
+
+  function renderTalentView(){
+    talentInfo.classList.remove('open');
+    analyzeTalentBtn.textContent = (talentData && talentData.talents && talentData.talents.length) ? '다시 분석하기' : '재능 분석하기';
+
+    if (!talentData || !talentData.talents || talentData.talents.length === 0) {
+      talentSvg.style.display = 'none';
+      talentSvg.innerHTML = '';
+      talentMeta.textContent = fragments.length < 3
+        ? '조각이 3개는 모이면 분석할 수 있어요.'
+        : '아직 분석해본 적 없어요.';
+      return;
+    }
+
+    talentSvg.style.display = 'block';
+    const newCount = fragments.length - talentData.fragmentCount;
+    talentMeta.textContent = newCount > 0
+      ? `분석 이후 조각 ${newCount}개가 더해졌어요.`
+      : `${formatTime(talentData.generatedAt)} 기준`;
+
+    const width = talentSvg.clientWidth || 340;
+    const height = 380;
+    const maxCount = Math.max(...talentData.talents.map(t => t.fragmentIds.length), 1);
+    const nodes = talentData.talents.map(t => ({
+      id: t.id,
+      name: t.name,
+      count: t.fragmentIds.length,
+      r: 24 + (t.fragmentIds.length / maxCount) * 42
+    }));
+    layoutBubbles(nodes, width, height);
+
+    const THREAD = [127, 176, 166], EMBER = [227, 147, 79];
+    talentSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    talentSvg.innerHTML = nodes.map(n => {
+      const t = maxCount > 0 ? n.count / maxCount : 0;
+      const color = lerpColor(THREAD, EMBER, t);
+      const fontSize = Math.max(11, Math.min(15, n.r * 0.32));
+      return `<g data-id="${n.id}" class="bubble">
+        <circle cx="${n.x}" cy="${n.y}" r="${n.r}" fill="${color}" fill-opacity="0.9"></circle>
+        <text x="${n.x}" y="${n.y}" font-size="${fontSize}" text-anchor="middle" dominant-baseline="middle" fill="#12141B" font-weight="600">${escapeHtml(n.name)}</text>
+      </g>`;
+    }).join('');
+
+    talentSvg.querySelectorAll('.bubble').forEach(g => {
+      g.addEventListener('click', () => showTalentInfo(g.dataset.id));
+    });
+  }
+
+  function showTalentInfo(id){
+    const t = talentData.talents.find(x => x.id === id);
+    if (!t) return;
+    const chips = t.fragmentIds.map(fid => {
+      const frag = fragments.find(f => f.id === fid);
+      if (!frag) return '';
+      return `<span class="chip" data-target="${fid}">${shortLabel(frag)}</span>`;
+    }).join('');
+    talentInfo.innerHTML = `
+      <p class="serif talent-name">${escapeHtml(t.name)}</p>
+      <p class="talent-desc">${escapeHtml(t.description)}</p>
+      <p class="label" style="margin-top:10px;">추천 방향</p>
+      <p class="talent-direction">${escapeHtml(t.direction)}</p>
+      ${chips ? `<div class="connections" style="margin-top:10px;">${chips}</div>` : ''}
+    `;
+    talentInfo.classList.add('open');
+    talentInfo.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        switchView('list');
+        requestAnimationFrame(() => {
+          const el = document.getElementById('frag-' + chip.dataset.target);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.classList.add('highlight');
+            setTimeout(() => el.classList.remove('highlight'), 1400);
+          }
+        });
       });
     });
   }
