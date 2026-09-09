@@ -667,7 +667,7 @@ ${lines}
       renderTalentView();
     } catch (e) {
       console.error(e);
-      alert('재능 분석 중 문제가 생겼어요. 잠시 후 다시 시도해주세요.');
+      alert('재능 분석 중 문제가 생겼어요:\n' + (e && e.message ? e.message : e));
     }
     analyzeTalentBtn.disabled = false;
     analyzeTalentBtn.textContent = (talentData && talentData.talents && talentData.talents.length) ? '다시 분석하기' : '재능 분석하기';
