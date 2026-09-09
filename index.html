@@ -173,7 +173,7 @@
 
   .talent-timeline{ display:none; margin-bottom: 14px; }
   .talent-timeline.show{ display:block; }
-  #timeline-svg{ width:100%; height: 150px; display:block; }
+  #timeline-svg{ width:100%; height: 170px; display:block; }
   .timeline-legend{
     display:flex; flex-wrap:wrap; gap: 10px 14px; justify-content:center;
     margin-top: 6px; padding: 0 8px;
@@ -733,7 +733,7 @@ ${lines}
   }
 
   function renderTalentTimeline(){
-    if (talentHistory.length < 2) {
+    if (talentHistory.length < 3) {
       talentTimeline.classList.remove('show');
       return;
     }
@@ -755,15 +755,16 @@ ${lines}
       .slice(0, 5);
 
     const width = timelineSvg.clientWidth || 340;
-    const height = 150;
-    const padL = 6, padR = 6, padT = 14, padB = 14;
+    const height = 170;
+    const labelW = 64;
+    const padL = 6, padR = labelW, padT = 14, padB = 26;
     const maxVal = Math.max(...series.map(s => s.max), 1);
     const n = talentHistory.length;
     const xStep = n > 1 ? (width - padL - padR) / (n - 1) : 0;
 
     const PALETTE = ['#E3934F', '#7FB0A6', '#C9A876', '#8FA3C9', '#B98BC9'];
 
-    const paths = series.map((s, i) => {
+    const lines = series.map((s, i) => {
       const points = s.values.map((v, si) => {
         const x = padL + xStep * si;
         const y = padT + (1 - v / maxVal) * (height - padT - padB);
@@ -774,15 +775,24 @@ ${lines}
         const y = padT + (1 - v / maxVal) * (height - padT - padB);
         return `<circle cx="${x}" cy="${y}" r="3" fill="${PALETTE[i % PALETTE.length]}"></circle>`;
       }).join('');
-      return `<polyline points="${points}" fill="none" stroke="${PALETTE[i % PALETTE.length]}" stroke-width="2" stroke-opacity="0.9"></polyline>${dots}`;
+      const lastX = padL + xStep * (n - 1);
+      const lastY = padT + (1 - s.values[n - 1] / maxVal) * (height - padT - padB);
+      const label = `<text x="${lastX + 7}" y="${lastY}" font-size="11" fill="${PALETTE[i % PALETTE.length]}" dominant-baseline="middle">${escapeHtml(s.name)}</text>`;
+      return `<polyline points="${points}" fill="none" stroke="${PALETTE[i % PALETTE.length]}" stroke-width="2" stroke-opacity="0.9"></polyline>${dots}${label}`;
+    }).join('');
+
+    const dateFormat = ts => new Date(ts).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+    const showEvery = n > 6 ? Math.ceil(n / 6) : 1;
+    const xLabels = talentHistory.map((snap, si) => {
+      if (si % showEvery !== 0 && si !== n - 1) return '';
+      const x = padL + xStep * si;
+      return `<text x="${x}" y="${height - 6}" font-size="10" fill="#8B8E9E" text-anchor="middle">${dateFormat(snap.generatedAt)}</text>`;
     }).join('');
 
     timelineSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    timelineSvg.innerHTML = paths;
+    timelineSvg.innerHTML = lines + xLabels;
 
-    timelineLegend.innerHTML = series.map((s, i) =>
-      `<span><span class="dot" style="background:${PALETTE[i % PALETTE.length]}"></span>${escapeHtml(s.name)}</span>`
-    ).join('');
+    timelineLegend.innerHTML = '';
   }
 
   function renderTalentView(){
