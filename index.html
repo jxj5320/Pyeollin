@@ -170,6 +170,18 @@
   .talent-change{
     text-align:center; font-size:12px; color: var(--thread); margin: 0 0 8px; min-height:1px;
   }
+
+  .talent-timeline{ display:none; margin-bottom: 14px; }
+  .talent-timeline.show{ display:block; }
+  #timeline-svg{ width:100%; height: 150px; display:block; }
+  .timeline-legend{
+    display:flex; flex-wrap:wrap; gap: 10px 14px; justify-content:center;
+    margin-top: 6px; padding: 0 8px;
+  }
+  .timeline-legend span{
+    font-size: 12px; color: var(--muted); display:flex; align-items:center; gap:5px;
+  }
+  .timeline-legend .dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
   #talent-svg{ width:100%; height: 380px; display:block; }
   #talent-svg .bubble{ cursor:pointer; }
   .talent-info{
@@ -326,6 +338,10 @@
       <button id="talent-next" type="button">›</button>
     </div>
     <p class="talent-change" id="talent-change"></p>
+    <div class="talent-timeline" id="talent-timeline">
+      <svg id="timeline-svg"></svg>
+      <div class="timeline-legend" id="timeline-legend"></div>
+    </div>
     <svg id="talent-svg"></svg>
     <div class="talent-info" id="talent-info"></div>
   </div>
@@ -358,6 +374,9 @@
   const talentNextBtn = document.getElementById('talent-next');
   const talentDateLabel = document.getElementById('talent-date');
   const talentChange = document.getElementById('talent-change');
+  const talentTimeline = document.getElementById('talent-timeline');
+  const timelineSvg = document.getElementById('timeline-svg');
+  const timelineLegend = document.getElementById('timeline-legend');
   const settingsToggle = document.getElementById('settings-toggle');
   const settingsPanel = document.getElementById('settings-panel');
   const apiKeyInput = document.getElementById('api-key-input');
@@ -713,6 +732,59 @@ ${lines}
     analyzeTalentBtn.textContent = talentHistory.length ? '다시 분석하기' : '재능 분석하기';
   }
 
+  function renderTalentTimeline(){
+    if (talentHistory.length < 2) {
+      talentTimeline.classList.remove('show');
+      return;
+    }
+    talentTimeline.classList.add('show');
+
+    // 이름별로 스냅샷마다의 관련 조각 개수를 모음 (정확히 같은 이름 기준)
+    const nameMap = new Map();
+    talentHistory.forEach((snap, si) => {
+      snap.talents.forEach(t => {
+        if (!nameMap.has(t.name)) nameMap.set(t.name, new Array(talentHistory.length).fill(0));
+        nameMap.get(t.name)[si] = t.fragmentIds.length;
+      });
+    });
+
+    // 존재감 있는 상위 5개만 (최대값 기준)
+    const series = Array.from(nameMap.entries())
+      .map(([name, values]) => ({ name, values, max: Math.max(...values) }))
+      .sort((a, b) => b.max - a.max)
+      .slice(0, 5);
+
+    const width = timelineSvg.clientWidth || 340;
+    const height = 150;
+    const padL = 6, padR = 6, padT = 14, padB = 14;
+    const maxVal = Math.max(...series.map(s => s.max), 1);
+    const n = talentHistory.length;
+    const xStep = n > 1 ? (width - padL - padR) / (n - 1) : 0;
+
+    const PALETTE = ['#E3934F', '#7FB0A6', '#C9A876', '#8FA3C9', '#B98BC9'];
+
+    const paths = series.map((s, i) => {
+      const points = s.values.map((v, si) => {
+        const x = padL + xStep * si;
+        const y = padT + (1 - v / maxVal) * (height - padT - padB);
+        return `${x},${y}`;
+      }).join(' ');
+      const dots = s.values.map((v, si) => {
+        const x = padL + xStep * si;
+        const y = padT + (1 - v / maxVal) * (height - padT - padB);
+        return `<circle cx="${x}" cy="${y}" r="3" fill="${PALETTE[i % PALETTE.length]}"></circle>`;
+      }).join('');
+      return `<polyline points="${points}" fill="none" stroke="${PALETTE[i % PALETTE.length]}" stroke-width="2" stroke-opacity="0.9"></polyline>${dots}`;
+    }).join('');
+
+    timelineSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    timelineSvg.innerHTML = paths;
+
+    timelineLegend.innerHTML = series.map((s, i) =>
+      `<span><span class="dot" style="background:${PALETTE[i % PALETTE.length]}"></span>${escapeHtml(s.name)}</span>`
+    ).join('');
+  }
+
   function renderTalentView(){
     talentInfo.classList.remove('open');
     analyzeTalentBtn.textContent = talentHistory.length ? '다시 분석하기' : '재능 분석하기';
@@ -722,6 +794,7 @@ ${lines}
       talentSvg.innerHTML = '';
       talentNav.classList.remove('show');
       talentChange.textContent = '';
+      talentTimeline.classList.remove('show');
       talentMeta.textContent = fragments.length < 3
         ? '조각이 3개는 모이면 분석할 수 있어요.'
         : '아직 분석해본 적 없어요.';
@@ -751,6 +824,8 @@ ${lines}
     } else {
       talentChange.textContent = '';
     }
+
+    renderTalentTimeline();
 
     const width = talentSvg.clientWidth || 340;
     const height = 380;
