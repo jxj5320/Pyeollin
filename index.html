@@ -156,6 +156,20 @@
   }
   .talent-btn:disabled{ opacity:0.5; cursor:default; }
   .talent-meta{ font-size:12px; color: var(--muted); line-height:1.5; }
+
+  .talent-nav{
+    display:none; align-items:center; justify-content:center; gap:14px;
+    margin: 4px 0 2px; font-size: 13px; color: var(--muted);
+  }
+  .talent-nav.show{ display:flex; }
+  .talent-nav button{
+    background:none; border:1px solid var(--line); color: var(--ink);
+    border-radius: 4px; width:28px; height:28px; cursor:pointer; font-size:15px; line-height:1;
+  }
+  .talent-nav button:disabled{ opacity:0.3; cursor:default; }
+  .talent-change{
+    text-align:center; font-size:12px; color: var(--thread); margin: 0 0 8px; min-height:1px;
+  }
   #talent-svg{ width:100%; height: 380px; display:block; }
   #talent-svg .bubble{ cursor:pointer; }
   .talent-info{
@@ -306,6 +320,12 @@
       <button class="talent-btn" id="analyze-talent-btn" type="button">재능 분석하기</button>
       <span class="talent-meta" id="talent-meta"></span>
     </div>
+    <div class="talent-nav" id="talent-nav">
+      <button id="talent-prev" type="button">‹</button>
+      <span id="talent-date"></span>
+      <button id="talent-next" type="button">›</button>
+    </div>
+    <p class="talent-change" id="talent-change"></p>
     <svg id="talent-svg"></svg>
     <div class="talent-info" id="talent-info"></div>
   </div>
@@ -333,6 +353,11 @@
   const talentInfo = document.getElementById('talent-info');
   const analyzeTalentBtn = document.getElementById('analyze-talent-btn');
   const talentMeta = document.getElementById('talent-meta');
+  const talentNav = document.getElementById('talent-nav');
+  const talentPrevBtn = document.getElementById('talent-prev');
+  const talentNextBtn = document.getElementById('talent-next');
+  const talentDateLabel = document.getElementById('talent-date');
+  const talentChange = document.getElementById('talent-change');
   const settingsToggle = document.getElementById('settings-toggle');
   const settingsPanel = document.getElementById('settings-panel');
   const apiKeyInput = document.getElementById('api-key-input');
@@ -553,14 +578,21 @@
   }
 
   const TALENT_KEY = 'pyeollin_talents';
-  let talentData = null;
+  let talentHistory = [];
   try {
     const rawTalents = localStorage.getItem(TALENT_KEY);
-    talentData = rawTalents ? JSON.parse(rawTalents) : null;
-  } catch (e) { talentData = null; }
+    const parsedRaw = rawTalents ? JSON.parse(rawTalents) : null;
+    if (parsedRaw && Array.isArray(parsedRaw.snapshots)) {
+      talentHistory = parsedRaw.snapshots;
+    } else if (parsedRaw && Array.isArray(parsedRaw.talents)) {
+      // 이전 버전(단일 스냅샷) 데이터 이전
+      talentHistory = [parsedRaw];
+    }
+  } catch (e) { talentHistory = []; }
+  let talentViewIndex = talentHistory.length - 1;
 
-  function saveTalents(data){
-    try { localStorage.setItem(TALENT_KEY, JSON.stringify(data)); }
+  function saveTalentHistory(){
+    try { localStorage.setItem(TALENT_KEY, JSON.stringify({ snapshots: talentHistory })); }
     catch (e) { console.error('재능 저장 실패', e); }
   }
 
@@ -599,6 +631,12 @@
   }
 
   analyzeTalentBtn.addEventListener('click', runTalentAnalysis);
+  talentPrevBtn.addEventListener('click', () => {
+    if (talentViewIndex > 0) { talentViewIndex--; renderTalentView(); }
+  });
+  talentNextBtn.addEventListener('click', () => {
+    if (talentViewIndex < talentHistory.length - 1) { talentViewIndex++; renderTalentView(); }
+  });
 
   async function runTalentAnalysis(){
     const apiKey = getApiKey();
@@ -663,40 +701,61 @@ ${lines}
         fragmentIds: (t.fragmentIndices || []).map(idx => sample[idx] && sample[idx].id).filter(Boolean)
       }));
 
-      talentData = { generatedAt: Date.now(), fragmentCount: fragments.length, talents };
-      saveTalents(talentData);
+      talentHistory.push({ generatedAt: Date.now(), fragmentCount: fragments.length, talents });
+      saveTalentHistory();
+      talentViewIndex = talentHistory.length - 1;
       renderTalentView();
     } catch (e) {
       console.error(e);
       alert('재능 분석 중 문제가 생겼어요:\n' + (e && e.message ? e.message : e));
     }
     analyzeTalentBtn.disabled = false;
-    analyzeTalentBtn.textContent = (talentData && talentData.talents && talentData.talents.length) ? '다시 분석하기' : '재능 분석하기';
+    analyzeTalentBtn.textContent = talentHistory.length ? '다시 분석하기' : '재능 분석하기';
   }
 
   function renderTalentView(){
     talentInfo.classList.remove('open');
-    analyzeTalentBtn.textContent = (talentData && talentData.talents && talentData.talents.length) ? '다시 분석하기' : '재능 분석하기';
+    analyzeTalentBtn.textContent = talentHistory.length ? '다시 분석하기' : '재능 분석하기';
 
-    if (!talentData || !talentData.talents || talentData.talents.length === 0) {
+    if (talentHistory.length === 0) {
       talentSvg.style.display = 'none';
       talentSvg.innerHTML = '';
+      talentNav.classList.remove('show');
+      talentChange.textContent = '';
       talentMeta.textContent = fragments.length < 3
         ? '조각이 3개는 모이면 분석할 수 있어요.'
         : '아직 분석해본 적 없어요.';
       return;
     }
 
+    const snapshot = talentHistory[talentViewIndex];
+    const isLatest = talentViewIndex === talentHistory.length - 1;
+
     talentSvg.style.display = 'block';
-    const newCount = fragments.length - talentData.fragmentCount;
-    talentMeta.textContent = newCount > 0
-      ? `분석 이후 조각 ${newCount}개가 더해졌어요.`
-      : `${formatTime(talentData.generatedAt)} 기준`;
+    talentMeta.textContent = isLatest
+      ? (() => {
+          const newCount = fragments.length - snapshot.fragmentCount;
+          return newCount > 0 ? `분석 이후 조각 ${newCount}개가 더해졌어요.` : '최신 분석';
+        })()
+      : '지난 분석';
+
+    talentNav.classList.toggle('show', talentHistory.length > 1);
+    talentDateLabel.textContent = formatTime(snapshot.generatedAt);
+    talentPrevBtn.disabled = talentViewIndex === 0;
+    talentNextBtn.disabled = talentViewIndex === talentHistory.length - 1;
+
+    if (talentViewIndex > 0) {
+      const prevNames = new Set(talentHistory[talentViewIndex - 1].talents.map(t => t.name));
+      const newNames = snapshot.talents.filter(t => !prevNames.has(t.name)).map(t => t.name);
+      talentChange.textContent = newNames.length ? `이번에 새로 나타난 결: ${newNames.join(', ')}` : '';
+    } else {
+      talentChange.textContent = '';
+    }
 
     const width = talentSvg.clientWidth || 340;
     const height = 380;
-    const maxCount = Math.max(...talentData.talents.map(t => t.fragmentIds.length), 1);
-    const nodes = talentData.talents.map(t => ({
+    const maxCount = Math.max(...snapshot.talents.map(t => t.fragmentIds.length), 1);
+    const nodes = snapshot.talents.map(t => ({
       id: t.id,
       name: t.name,
       count: t.fragmentIds.length,
@@ -722,7 +781,8 @@ ${lines}
   }
 
   function showTalentInfo(id){
-    const t = talentData.talents.find(x => x.id === id);
+    const snapshot = talentHistory[talentViewIndex];
+    const t = snapshot.talents.find(x => x.id === id);
     if (!t) return;
     const chips = t.fragmentIds.map(fid => {
       const frag = fragments.find(f => f.id === fid);
