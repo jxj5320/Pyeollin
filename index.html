@@ -166,7 +166,12 @@
   .card img{ max-width: 100%; border-radius: 4px; margin-top: 8px; display:block; }
 
   .interp{
-    margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line);
+    margin-top: 12px; padding: 11px 13px;
+    background: var(--thread-dim); border-left: 2px solid rgba(127,176,166,0.5);
+    border-radius: 4px;
+  }
+  .interp .label{
+    font-size: 11px; font-style: normal; color: var(--thread); margin: 0 0 6px;
   }
   .interp p{
     margin:0; font-size: 15px; line-height:1.7; font-style: italic; color: var(--ink);
@@ -705,6 +710,7 @@ ${historyLines || '(아직 없음)'}
         }).join('');
         interpBlock = `
           <div class="interp">
+            <p class="label">AI가 짚어본 결</p>
             <p class="serif">${escapeHtml(f.interpretation)}</p>
             ${chips ? `<div class="connections">${chips}</div>` : ''}
           </div>`;
