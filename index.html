@@ -609,9 +609,10 @@
     analyzeTalentBtn.textContent = '분석하는 중…';
 
     try {
-      const sample = fragments.slice(0, 60);
+      const sample = fragments.slice(0, 40);
+      const trim = (s, n) => (s && s.length > n ? s.slice(0, n) + '…' : s);
       const lines = sample
-        .map((f, i) => `${i}. ${f.text ? f.text : '(사진 기록)'}${f.interpretation ? ' → 그때 해석: ' + f.interpretation : ''}`)
+        .map((f, i) => `${i}. ${f.text ? trim(f.text, 120) : '(사진 기록)'}${f.interpretation ? ' → 그때 해석: ' + trim(f.interpretation, 100) : ''}`)
         .join('\n');
 
       const prompt = `다음은 한 사람이 시간이 지나며 남긴 직관·감각의 조각들이야.
@@ -638,7 +639,7 @@ ${lines}
         },
         body: JSON.stringify({
           model: 'claude-sonnet-5',
-          max_tokens: 900,
+          max_tokens: 1500,
           messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }]
         })
       });
