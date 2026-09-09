@@ -652,7 +652,7 @@ ${lines}
         .filter(b => b.type === 'text')
         .map(b => b.text)
         .join('\n');
-      const clean = textOut.replace(/```json|```/g, '').trim();
+      const clean = textOut.replace(/```json|```/g, '').trim().replace(/\r?\n/g, ' ');
       const parsed = JSON.parse(clean);
 
       const talents = (parsed.talents || []).map((t, i) => ({
@@ -905,7 +905,7 @@ ${historyLines || '(아직 없음)'}
         .filter(b => b.type === 'text')
         .map(b => b.text)
         .join('\n');
-      const clean = textOut.replace(/```json|```/g, '').trim();
+      const clean = textOut.replace(/```json|```/g, '').trim().replace(/\r?\n/g, ' ');
       const parsed = JSON.parse(clean);
 
       frag.interpretation = parsed.interpretation || '아직 뭐라 말하기 어려운 느낌이네요.';
